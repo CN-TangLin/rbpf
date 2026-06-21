@@ -591,25 +591,28 @@ impl RiscV64Compiler {
                     self.emit_ld(mem, dst, RV_T1, 0);
                 }
 
-                // ST
+                // ST: load immediate FIRST, then compute effective address.
+                // emit_load_imm(RV_T2, ...) uses RV_T1 as a scratch register
+                // internally, so we must not compute the address into RV_T1
+                // before loading the value into RV_T2.
                 ebpf::ST_B_IMM => {
-                    self.emit_effective_addr(mem, dst, insn.off as i32, RV_T1);
                     self.emit_load_imm(mem, RV_T2, insn.imm as i64);
+                    self.emit_effective_addr(mem, dst, insn.off as i32, RV_T1);
                     self.emit_sb(mem, RV_T2, RV_T1, 0);
                 }
                 ebpf::ST_H_IMM => {
-                    self.emit_effective_addr(mem, dst, insn.off as i32, RV_T1);
                     self.emit_load_imm(mem, RV_T2, insn.imm as i64);
+                    self.emit_effective_addr(mem, dst, insn.off as i32, RV_T1);
                     self.emit_sh(mem, RV_T2, RV_T1, 0);
                 }
                 ebpf::ST_W_IMM => {
-                    self.emit_effective_addr(mem, dst, insn.off as i32, RV_T1);
                     self.emit_load_imm(mem, RV_T2, insn.imm as i64);
+                    self.emit_effective_addr(mem, dst, insn.off as i32, RV_T1);
                     self.emit_sw(mem, RV_T2, RV_T1, 0);
                 }
                 ebpf::ST_DW_IMM => {
-                    self.emit_effective_addr(mem, dst, insn.off as i32, RV_T1);
                     self.emit_load_imm(mem, RV_T2, insn.imm as i64);
+                    self.emit_effective_addr(mem, dst, insn.off as i32, RV_T1);
                     self.emit_sd(mem, RV_T2, RV_T1, 0);
                 }
 
