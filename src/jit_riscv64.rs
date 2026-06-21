@@ -484,17 +484,10 @@ impl RiscV64Compiler {
             };
             let pc = jump.offset_loc;
             let offset = target_loc as i64 - pc as i64;
-            let auipc_off = offset;
-            let jalr_off = offset - (auipc_off & !0xfff);
-            let lo12 = (jalr_off as i32) & 0xfff;
-            let hi20_plus_lo12 = auipc_off as u32;
-            let hi20 = (hi20_plus_lo12.wrapping_sub(lo12 as u32).wrapping_add(0x800)) >> 12;
-            let rd_tmp = RV_T3;
-            let rd_jalr = RV_T4;
-            self.emit_auipc_at(mem, pc, rd_tmp, hi20 & 0xFFFFF);
-            self.emit_load_imm_at(mem, pc + 4, rd_jalr, jalr_off);
-            self.emit_addi_at(mem, pc + 24, rd_tmp, rd_tmp, lo12);
-            self.emit_jalr_at(mem, pc + 28, RV_ZERO, rd_tmp, 0);
+            let jalr_imm = (offset as u32) & 0xFFF;
+            let auipc_imm = (((offset + 0x800) >> 12) as u32) & 0xFFFFF;
+            self.emit_auipc_at(mem, pc, RV_T3, auipc_imm);
+            self.emit_jalr_at(mem, pc + 4, RV_ZERO, RV_T3, jalr_imm as i32);
         }
         Ok(())
     }
@@ -512,81 +505,6 @@ impl RiscV64Compiler {
         let bytes = insn.to_le_bytes();
         for i in 0..4 {
             mem.contents[offset + i] = bytes[i];
-        }
-    }
-
-    fn emit_addi_at(&self, mem: &mut JitMemory, offset: usize, rd: u32, rs1: u32, imm: i32) {
-        let insn = ((imm as u32) << 20) | (rs1 << 15) | (0 << 12) | (rd << 7) | 0x13;
-        let bytes = insn.to_le_bytes();
-        for i in 0..4 {
-            mem.contents[offset + i] = bytes[i];
-        }
-    }
-
-    fn emit_load_imm_at(&self, mem: &mut JitMemory, start: usize, rd: u32, val: i64) {
-        let val_u = val as u64;
-        if val_u == 0 {
-            let insn = (0u32 << 20) | (RV_ZERO << 15) | (0 << 12) | (rd << 7) | 0x13;
-            let bytes = insn.to_le_bytes();
-            for i in 0..4 {
-                mem.contents[start + i] = bytes[i];
-            }
-            return;
-        }
-        if (val as i32) >= -2048 && (val as i32) < 2048 {
-            let insn = ((val as u32) << 20) | (RV_ZERO << 15) | (0 << 12) | (rd << 7) | 0x13;
-            let bytes = insn.to_le_bytes();
-            for i in 0..4 {
-                mem.contents[start + i] = bytes[i];
-            }
-            return;
-        }
-        let upper = (val_u >> 32) as u32;
-        let lower = val_u as u32;
-        let upper_lo12 = ((upper << 20) as i32) >> 20;
-        let upper_hi20 =
-            ((upper.wrapping_sub(upper_lo12 as u32).wrapping_add(0x800)) >> 12) & 0xFFFFF;
-        let lower_lo12 = ((lower << 20) as i32) >> 20;
-        let lower_hi20 =
-            ((lower.wrapping_sub(lower_lo12 as u32).wrapping_add(0x800)) >> 12) & 0xFFFFF;
-        let mut off = start;
-        let lui_insn = (upper_hi20 << 12) | (rd << 7) | 0x37;
-        let bytes = lui_insn.to_le_bytes();
-        for i in 0..4 {
-            mem.contents[off + i] = bytes[i];
-        }
-        off += 4;
-        let addiw_insn = ((upper_lo12 as u32) << 20) | (rd << 15) | (0 << 12) | (rd << 7) | 0x1b;
-        let bytes = addiw_insn.to_le_bytes();
-        for i in 0..4 {
-            mem.contents[off + i] = bytes[i];
-        }
-        off += 4;
-        let slli_insn = (0u32 << 25) | (12 << 20) | (rd << 15) | (1 << 12) | (rd << 7) | 0x13;
-        let bytes = slli_insn.to_le_bytes();
-        for i in 0..4 {
-            mem.contents[off + i] = bytes[i];
-        }
-        off += 4;
-        let lui_t1 = (lower_hi20 << 12) | (RV_T1 << 7) | 0x37;
-        let bytes = lui_t1.to_le_bytes();
-        for i in 0..4 {
-            mem.contents[off + i] = bytes[i];
-        }
-        off += 4;
-        if lower_lo12 as u32 != 0 {
-            let addiw_t1 =
-                ((lower_lo12 as u32) << 20) | (RV_T1 << 15) | (0 << 12) | (RV_T1 << 7) | 0x1b;
-            let bytes = addiw_t1.to_le_bytes();
-            for i in 0..4 {
-                mem.contents[off + i] = bytes[i];
-            }
-        }
-        off += 4;
-        let add_insn = (0u32 << 25) | (RV_T1 << 20) | (rd << 15) | (0 << 12) | (rd << 7) | 0x33;
-        let bytes = add_insn.to_le_bytes();
-        for i in 0..4 {
-            mem.contents[off + i] = bytes[i];
         }
     }
 
