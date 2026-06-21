@@ -12,8 +12,6 @@ const TARGET_PC_EXIT: isize = TARGET_OFFSET + 1;
 const RV_ZERO: u32 = 0;
 const RV_RA: u32 = 1;
 const RV_SP: u32 = 2;
-const RV_GP: u32 = 3;
-const RV_TP: u32 = 4;
 const RV_T0: u32 = 5;
 const RV_T1: u32 = 6;
 const RV_T2: u32 = 7;
@@ -314,7 +312,7 @@ impl RiscV64Compiler {
     }
 
     fn emit_lb(&self, mem: &mut JitMemory, rd: u32, rs1: u32, off: i32) {
-        self.emit_i(mem, off as u32, rs1, 4, rd, 0x03);
+        self.emit_i(mem, off as u32, rs1, 0, rd, 0x03);
     }
 
     fn emit_lbu(&self, mem: &mut JitMemory, rd: u32, rs1: u32, off: i32) {
@@ -761,9 +759,9 @@ impl RiscV64Compiler {
                         self.emit_load_imm(mem, RV_T1, insn.imm as i64);
                     }
                     let s = if use_imm { RV_T1 } else { src };
-                    self.emit_beq(mem, s, RV_ZERO, 20);
+                    self.emit_beq(mem, s, RV_ZERO, 12);
                     self.emit_divuw(mem, dst, dst, s);
-                    self.emit_jalr(mem, RV_ZERO, RV_RA, 0);
+                    self.emit_beq(mem, RV_ZERO, RV_ZERO, 12);
                     self.emit_addi(mem, dst, RV_ZERO, 0);
                     self.emit_zext32(mem, dst);
                 }
@@ -966,9 +964,9 @@ impl RiscV64Compiler {
                         self.emit_load_imm(mem, RV_T1, insn.imm as i64);
                     }
                     let s = if use_imm { RV_T1 } else { src };
-                    self.emit_beq(mem, s, RV_ZERO, 20);
+                    self.emit_beq(mem, s, RV_ZERO, 12);
                     self.emit_divu(mem, dst, dst, s);
-                    self.emit_jalr(mem, RV_ZERO, RV_RA, 0);
+                    self.emit_beq(mem, RV_ZERO, RV_ZERO, 8);
                     self.emit_addi(mem, dst, RV_ZERO, 0);
                 }
                 ebpf::MOD64_IMM | ebpf::MOD64_REG => {
