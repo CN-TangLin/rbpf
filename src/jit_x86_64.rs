@@ -273,10 +273,9 @@ impl JitCompiler {
     // Store register src to [dst + offset]
     #[rustfmt::skip]
     fn emit_store(&self, mem: &mut JitMemory, size: OperandSize, src: u8, dst: u8, offset: i32) {
-        match size {
-            OperandSize::S16 => self.emit1(mem, 0x66), // 16-bit override
-            _ => {},
-        };
+        if let OperandSize::S16 = size {
+            self.emit1(mem, 0x66);
+        } // 16-bit override
         let (is_s8, is_u64, rexw) = match size {
             OperandSize::S8  => (true, false, 0),
             OperandSize::S64 => (false, true, 1),
@@ -301,10 +300,9 @@ impl JitCompiler {
     // Store immediate to [dst + offset]
     #[rustfmt::skip]
     fn emit_store_imm32(&self, mem: &mut JitMemory, size: OperandSize, dst: u8, offset: i32, imm: i32) {
-        match size {
-            OperandSize::S16 => self.emit1(mem, 0x66), // 16-bit override
-            _ => {},
-        };
+        if let OperandSize::S16 = size {
+            self.emit1(mem, 0x66);
+        } // 16-bit override
         match size {
             OperandSize::S64 => self.emit_basic_rex(mem, 1, 0, dst),
             _                => self.emit_basic_rex(mem, 0, 0, dst),
