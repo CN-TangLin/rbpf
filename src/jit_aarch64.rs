@@ -420,12 +420,9 @@ impl Aarch64Compiler {
     }
 
     /// Emit conditional jump with inverted condition
-    /// Pattern: 7 NOPs | B.cond INVERTED #28 | 7 NOPs (take block)
+    /// Pattern: B.cond INVERTED #32 | 7 NOPs (take block)
     fn emit_cond_jump(&mut self, mem: &mut JitMemory, cond: u32, target_pc: isize) {
-        for _ in 0..7 {
-            self.emit_nop(mem);
-        }
-        self.emit_bcond(mem, cond, 28);
+        self.emit_bcond(mem, cond, 32);
         self.jumps.push(Jump {
             offset_loc: mem.offset,
             target_pc,
@@ -530,7 +527,7 @@ impl Aarch64Compiler {
                 self.emit_add(mem, A64_X6, A64_X2, A64_X3); // x6 = mem + mem_len
                 self.emit_str(mem, A64_X6, A64_X7, 0); // store mem_end
             }
-            _ => {} // Raw/Mbuff: context is already in x0
+            _ => {} // Mbuff: context is in x0
         }
 
         // Allocate BPF stack, set up frame pointer
@@ -542,8 +539,17 @@ impl Aarch64Compiler {
             (BPF_STACK_SIZE + CALLEE_SAVED_SIZE) as u32,
         );
 
-        // BPF r0 = 0, BPF r1 = context (from x0)
-        self.emit_mov(mem, A64_X1, A64_X0);
+        // BPF r0 = 0, BPF r1 = context:
+        //   - Raw mode (false, _): context = mem (x2)
+        //   - Mbuff/FixedMbuff mode (true, _): context = mbuff (x0)
+        match (use_mbuff, update_data_ptr) {
+            (false, _) => {
+                self.emit_mov(mem, A64_X1, A64_X2);
+            }
+            _ => {
+                self.emit_mov(mem, A64_X1, A64_X0);
+            }
+        }
         self.emit_mov(mem, A64_X0, A64_XZR);
 
         // Anchor for EXIT

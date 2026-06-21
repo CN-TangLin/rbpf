@@ -436,12 +436,6 @@ impl RiscV64Compiler {
         rs2: u32,
         target_pc: isize,
     ) {
-        self.emit4(mem, 0x00000013); // NOP for AUIPC
-        self.emit4(mem, 0x00000013); // NOP for load_imm64_padded
-        self.emit4(mem, 0x00000013);
-        self.emit4(mem, 0x00000013);
-        self.emit4(mem, 0x00000013);
-        self.emit4(mem, 0x00000013); // NOP for ADD
         // Inverted condition: skip the jump if condition is true
         let inv_funct3 = match funct3 {
             0 => 1, // BEQ -> BNE
@@ -524,32 +518,39 @@ impl RiscV64Compiler {
         self.emit_sd(mem, RV_S5, RV_SP, 40);
 
         // RV ABI: A0=arg1, A1=arg2, A2=arg3, A3=arg4, A4=arg5, A5=arg6
-        // rbpf calling convention:
-        //   A0(FixedMbuff): mbuff, A1: mbuff_len, A2: mem, A3: mem_len, A4: mem_offset, A5: mem_end_offset
-        //   A0(Raw): mem, A1: mem_len
-        // BPF: r1=arg1, r2=arg2, r3=arg3, r4=arg4, r5=arg5
+        // MachineCode calling convention (6 args):
+        //   A0=arg1 (mbuff), A1=arg2 (mbuff_len), A2=arg3 (mem),
+        //   A3=arg4 (mem_len), A4=arg5, A5=arg6
+        //
+        // BPF register map: r0=A0, r1=A1, r2=A2, r3=A3, r4=A4, r5=A5
+        // BPF convention: r1 = context pointer
+        //   - Raw mode: context = mem (A2)
+        //   - Mbuff/FixedMbuff mode: context = mbuff (A0)
 
-        // Save mem pointer to BPF r10 (stack pointer)
+        // Set BPF r1 = context pointer
         match (use_mbuff, update_data_ptr) {
             (false, _) => {
-                // EbpfVmRaw: A0=mem, A1=mem_len
-                // BPF r1 already = A0 = mem pointer
+                // EbpfVmRaw: context = mem (A2)
+                self.emit_addi(mem, map_register(1), RV_A2, 0);
             }
             (true, false) => {
-                // EbpfVmMbuff: A0=mbuff
-                // BPF r1 = mbuff
+                // EbpfVmMbuff: context = mbuff (A0)
+                self.emit_addi(mem, map_register(1), RV_A0, 0);
             }
             (true, true) => {
-                // EbpfVmFixedMbuff: update mem/mem_end in mbuff
-                // A0=mbuff, A4=mem_offset, A5=mem_end_offset, A2=mem, A3=mem_len
+                // EbpfVmFixedMbuff: update mem/mem_end in mbuff,
+                // context = mbuff (A0)
                 self.emit_add(mem, RV_A4, RV_A0); // tmp = mbuff + mem_offset
                 self.emit_sd(mem, RV_A2, RV_A4, 0); // store mem at mbuff+mem_offset
                 self.emit_add(mem, RV_A5, RV_A0); // tmp = mbuff + mem_end_offset
                 self.emit_add(mem, RV_T1, RV_A2, RV_A3); // mem_end = mem + mem_len
                 self.emit_sd(mem, RV_T1, RV_A5, 0); // store mem_end
+                self.emit_addi(mem, map_register(1), RV_A0, 0); // r1 = mbuff
             }
         }
 
+        // BPF r0 = 0 (return value, good practice)
+        self.emit_addi(mem, map_register(0), RV_ZERO, 0);
         // BPF r10 = stack pointer (top of frame, matching x86_64 convention)
         self.emit_addi(mem, map_register(10), RV_SP, FRAME_SIZE as i32);
 
@@ -686,7 +687,8 @@ impl RiscV64Compiler {
                         self.emit_load_imm(mem, RV_T1, insn.imm as i64);
                     }
                     let s = if use_imm { RV_T1 } else { src };
-                    self.emit_beq(mem, s, RV_ZERO, 8);
+                    // skip remuw + zext32 (4 + 8 = 16 bytes)
+                    self.emit_beq(mem, s, RV_ZERO, 16);
                     self.emit_remuw(mem, dst, dst, s);
                     self.emit_zext32(mem, dst);
                 }
