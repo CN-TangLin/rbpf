@@ -80,7 +80,7 @@ pub(crate) struct Aarch64Compiler {
 }
 
 impl Aarch64Compiler {
-    fn new() -> Aarch64Compiler {
+    pub(super) fn new() -> Aarch64Compiler {
         Aarch64Compiler {
             pc_locs: vec![],
             jumps: vec![],

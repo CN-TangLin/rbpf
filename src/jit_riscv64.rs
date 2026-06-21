@@ -55,7 +55,7 @@ pub(crate) struct RiscV64Compiler {
 }
 
 impl RiscV64Compiler {
-    fn new() -> RiscV64Compiler {
+    pub(super) fn new() -> RiscV64Compiler {
         RiscV64Compiler {
             pc_locs: vec![],
             jumps: vec![],
@@ -677,7 +677,7 @@ impl RiscV64Compiler {
                     let s = if use_imm { RV_T1 } else { src };
                     self.emit_beq(mem, s, RV_ZERO, 12);
                     self.emit_divuw(mem, dst, dst, s);
-                    self.emit_beq(mem, RV_ZERO, RV_ZERO, 12);
+                    self.emit_beq(mem, RV_ZERO, RV_ZERO, 8);
                     self.emit_addi(mem, dst, RV_ZERO, 0);
                     self.emit_zext32(mem, dst);
                 }
