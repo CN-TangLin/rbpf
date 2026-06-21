@@ -1086,6 +1086,19 @@ impl RiscV64Compiler {
                 ebpf::BPF_CALL => match insn.src {
                     0x0 => {
                         if let Some(&helper) = helpers.get(&(insn.imm as u32)) {
+                            // Rearrange register arguments so the helper receives
+                            // BPF r1 (context) in a0, r2 in a1, ..., r5 in a4.
+                            // BPF register mapping: r0→a0, r1→a1, r2→a2, r3→a3, r4→a4, r5→a5
+                            // RISC-V calling convention:  a0=arg1, a1=arg2, ..., a4=arg5
+                            self.emit_addi(mem, RV_T2, RV_A2, 0); // save BPF r2
+                            self.emit_addi(mem, RV_T3, RV_A3, 0); // save BPF r3
+                            self.emit_addi(mem, RV_T4, RV_A4, 0); // save BPF r4
+                            self.emit_addi(mem, RV_T5, RV_A5, 0); // save BPF r5
+                            self.emit_addi(mem, RV_A0, RV_A1, 0); // a0 = BPF r1 (context)
+                            self.emit_addi(mem, RV_A1, RV_T2, 0); // a1 = BPF r2
+                            self.emit_addi(mem, RV_A2, RV_T3, 0); // a2 = BPF r3
+                            self.emit_addi(mem, RV_A3, RV_T4, 0); // a3 = BPF r4
+                            self.emit_addi(mem, RV_A4, RV_T5, 0); // a4 = BPF r5
                             let fn_ptr = helper as usize;
                             self.emit_load_imm(mem, RV_T1, fn_ptr as i64);
                             self.emit_jalr(mem, RV_RA, RV_T1, 0);
