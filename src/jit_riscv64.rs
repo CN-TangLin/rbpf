@@ -952,9 +952,13 @@ impl RiscV64Compiler {
                     } else {
                         self.emit_load_imm(mem, RV_T1, insn.imm as i64);
                     }
-                    self.emit_cond_jump(mem, 6, dst, RV_T1, target_pc);
+                    // JGT: jump if dst >u imm  ⇔  BLTU(imm, dst)
+                    self.emit_cond_jump(mem, 6, RV_T1, dst, target_pc);
                 }
-                ebpf::JGT_REG => self.emit_cond_jump(mem, 6, dst, src, target_pc),
+                ebpf::JGT_REG => {
+                    // JGT: jump if dst >u src  ⇔  BLTU(src, dst)
+                    self.emit_cond_jump(mem, 6, src, dst, target_pc);
+                }
                 ebpf::JGE_IMM => {
                     if insn.imm >= -2048 && insn.imm < 2048 {
                         self.emit_addi(mem, RV_T1, RV_ZERO, insn.imm);
@@ -970,9 +974,13 @@ impl RiscV64Compiler {
                     } else {
                         self.emit_load_imm(mem, RV_T1, insn.imm as i64);
                     }
-                    self.emit_cond_jump(mem, 6, RV_T1, dst, target_pc);
+                    // JLT: jump if dst <u imm  ⇔  BLTU(dst, imm)
+                    self.emit_cond_jump(mem, 6, dst, RV_T1, target_pc);
                 }
-                ebpf::JLT_REG => self.emit_cond_jump(mem, 6, src, dst, target_pc),
+                ebpf::JLT_REG => {
+                    // JLT: jump if dst <u src  ⇔  BLTU(dst, src)
+                    self.emit_cond_jump(mem, 6, dst, src, target_pc);
+                }
                 ebpf::JLE_IMM => {
                     if insn.imm >= -2048 && insn.imm < 2048 {
                         self.emit_addi(mem, RV_T1, RV_ZERO, insn.imm);
