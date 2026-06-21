@@ -6,11 +6,7 @@
 //      (Translation to Rust, MetaBuff addition)
 // x86-64 JIT backend for eBPF
 
-#![allow(clippy::single_match)]
-
 use super::{JitMemory, TARGET_PC_EXIT};
-#[cfg(not(feature = "std"))]
-use crate::ErrorKind;
 use crate::{Error, HashMap, Vec, ebpf, format, vec};
 use core::mem;
 use core::ptr;

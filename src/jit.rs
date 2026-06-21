@@ -5,8 +5,6 @@
 // Copyright 2016 6WIND S.A. <quentin.monnet@6wind.com>
 //      (Translation to Rust, MetaBuff addition)
 
-#![allow(clippy::single_match)]
-
 #[cfg(not(feature = "std"))]
 use crate::ErrorKind;
 use crate::{Error, HashMap, ebpf};

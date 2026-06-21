@@ -2,8 +2,6 @@
 // RISC-V 64-bit JIT backend for eBPF
 // Adapted from StarryOS eBPF JIT implementation
 
-#[cfg(not(feature = "std"))]
-use crate::ErrorKind;
 use crate::{Error, HashMap, Vec, ebpf, format, vec};
 
 const TARGET_OFFSET: isize = ebpf::PROG_MAX_INSNS as isize;
@@ -454,7 +452,7 @@ impl RiscV64Compiler {
             7 => 6, // BGEU -> BLTU
             _ => funct3,
         };
-        self.emit_b(mem, 40, rs2, rs1, inv_funct3);
+        self.emit_b(mem, 32, rs2, rs1, inv_funct3);
         self.jumps.push(Jump {
             offset_loc: mem.offset,
             target_pc,
@@ -468,7 +466,7 @@ impl RiscV64Compiler {
         self.emit4(mem, 0x00000013); // NOP for JALR
     }
 
-    fn resolve_jumps(&mut self, mem: &mut JitMemory) -> Result<(), Error> {
+    pub(super) fn resolve_jumps(&mut self, mem: &mut JitMemory) -> Result<(), Error> {
         if !mem.write_enabled {
             return Ok(());
         }
@@ -581,59 +579,59 @@ impl RiscV64Compiler {
 
                 // LDX
                 ebpf::LD_B_REG => {
-                    self.emit_effectiveaddr(mem, src, insn.off as i32, RV_T1);
+                    self.emit_effective_addr(mem, src, insn.off as i32, RV_T1);
                     self.emit_lb(mem, dst, RV_T1, 0);
                 }
                 ebpf::LD_H_REG => {
-                    self.emit_effectiveaddr(mem, src, insn.off as i32, RV_T1);
+                    self.emit_effective_addr(mem, src, insn.off as i32, RV_T1);
                     self.emit_lhu(mem, dst, RV_T1, 0);
                 }
                 ebpf::LD_W_REG => {
-                    self.emit_effectiveaddr(mem, src, insn.off as i32, RV_T1);
+                    self.emit_effective_addr(mem, src, insn.off as i32, RV_T1);
                     self.emit_lwu(mem, dst, RV_T1, 0);
                 }
                 ebpf::LD_DW_REG => {
-                    self.emit_effectiveaddr(mem, src, insn.off as i32, RV_T1);
+                    self.emit_effective_addr(mem, src, insn.off as i32, RV_T1);
                     self.emit_ld(mem, dst, RV_T1, 0);
                 }
 
                 // ST
                 ebpf::ST_B_IMM => {
-                    self.emit_effectiveaddr(mem, dst, insn.off as i32, RV_T1);
+                    self.emit_effective_addr(mem, dst, insn.off as i32, RV_T1);
                     self.emit_load_imm(mem, RV_T2, insn.imm as i64);
                     self.emit_sb(mem, RV_T2, RV_T1, 0);
                 }
                 ebpf::ST_H_IMM => {
-                    self.emit_effectiveaddr(mem, dst, insn.off as i32, RV_T1);
+                    self.emit_effective_addr(mem, dst, insn.off as i32, RV_T1);
                     self.emit_load_imm(mem, RV_T2, insn.imm as i64);
                     self.emit_sh(mem, RV_T2, RV_T1, 0);
                 }
                 ebpf::ST_W_IMM => {
-                    self.emit_effectiveaddr(mem, dst, insn.off as i32, RV_T1);
+                    self.emit_effective_addr(mem, dst, insn.off as i32, RV_T1);
                     self.emit_load_imm(mem, RV_T2, insn.imm as i64);
                     self.emit_sw(mem, RV_T2, RV_T1, 0);
                 }
                 ebpf::ST_DW_IMM => {
-                    self.emit_effectiveaddr(mem, dst, insn.off as i32, RV_T1);
+                    self.emit_effective_addr(mem, dst, insn.off as i32, RV_T1);
                     self.emit_load_imm(mem, RV_T2, insn.imm as i64);
                     self.emit_sd(mem, RV_T2, RV_T1, 0);
                 }
 
                 // STX
                 ebpf::ST_B_REG => {
-                    self.emit_effectiveaddr(mem, dst, insn.off as i32, RV_T1);
+                    self.emit_effective_addr(mem, dst, insn.off as i32, RV_T1);
                     self.emit_sb(mem, src, RV_T1, 0);
                 }
                 ebpf::ST_H_REG => {
-                    self.emit_effectiveaddr(mem, dst, insn.off as i32, RV_T1);
+                    self.emit_effective_addr(mem, dst, insn.off as i32, RV_T1);
                     self.emit_sh(mem, src, RV_T1, 0);
                 }
                 ebpf::ST_W_REG => {
-                    self.emit_effectiveaddr(mem, dst, insn.off as i32, RV_T1);
+                    self.emit_effective_addr(mem, dst, insn.off as i32, RV_T1);
                     self.emit_sw(mem, src, RV_T1, 0);
                 }
                 ebpf::ST_DW_REG => {
-                    self.emit_effectiveaddr(mem, dst, insn.off as i32, RV_T1);
+                    self.emit_effective_addr(mem, dst, insn.off as i32, RV_T1);
                     self.emit_sd(mem, src, RV_T1, 0);
                 }
 
@@ -761,9 +759,11 @@ impl RiscV64Compiler {
                 }
                 ebpf::ARSH32_IMM => {
                     self.emit_sraiw(mem, dst, dst, (insn.imm as u32) & 0x1f);
+                    self.emit_zext32(mem, dst);
                 }
                 ebpf::ARSH32_REG => {
                     self.emit_sraw(mem, dst, dst, src);
+                    self.emit_zext32(mem, dst);
                 }
                 ebpf::LE => {} // no-op on little-endian
                 ebpf::BE => {
@@ -1155,7 +1155,6 @@ impl RiscV64Compiler {
         self.emit_addi(mem, RV_SP, RV_SP, FRAME_SIZE as i32);
         self.emit_jalr(mem, RV_ZERO, RV_RA, 0);
 
-        self.resolve_jumps(mem)?;
         Ok(())
     }
 }

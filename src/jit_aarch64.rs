@@ -2,8 +2,6 @@
 // AArch64 (ARM64) JIT backend for eBPF
 // Adapted from StarryOS eBPF JIT implementation
 
-#[cfg(not(feature = "std"))]
-use crate::ErrorKind;
 use crate::{Error, HashMap, Vec, ebpf, format, vec};
 
 const PAGE_SIZE: usize = 4096;
@@ -486,7 +484,7 @@ impl Aarch64Compiler {
         self.write_u32_at(mem, pc + 24, 0xD61F_0220); // BR x17
     }
 
-    fn resolve_jumps(&mut self, mem: &mut JitMemory) -> Result<(), Error> {
+    pub(super) fn resolve_jumps(&mut self, mem: &mut JitMemory) -> Result<(), Error> {
         if !mem.write_enabled {
             return Ok(());
         }
@@ -870,7 +868,7 @@ impl Aarch64Compiler {
                     } else {
                         src
                     };
-                    self.emit_cmp(mem, s, dst);
+                    self.emit_cmp(mem, dst, s);
                     self.emit_cond_jump(mem, COND_HS, target_pc);
                 }
                 ebpf::JLE_IMM | ebpf::JLE_REG => {
@@ -880,7 +878,7 @@ impl Aarch64Compiler {
                     } else {
                         src
                     };
-                    self.emit_cmp(mem, s, dst);
+                    self.emit_cmp(mem, dst, s);
                     self.emit_cond_jump(mem, COND_HI, target_pc);
                 }
                 ebpf::JSET_IMM | ebpf::JSET_REG => {
@@ -910,7 +908,7 @@ impl Aarch64Compiler {
                     } else {
                         src
                     };
-                    self.emit_cmp(mem, s, dst);
+                    self.emit_cmp(mem, dst, s);
                     self.emit_cond_jump(mem, COND_LE, target_pc);
                 }
                 ebpf::JSGE_IMM | ebpf::JSGE_REG => {
@@ -940,7 +938,7 @@ impl Aarch64Compiler {
                     } else {
                         src
                     };
-                    self.emit_cmp(mem, s, dst);
+                    self.emit_cmp(mem, dst, s);
                     self.emit_cond_jump(mem, COND_GT, target_pc);
                 }
 
@@ -982,7 +980,7 @@ impl Aarch64Compiler {
                     } else {
                         src
                     };
-                    self.emit_cmpw(mem, s, dst);
+                    self.emit_cmpw(mem, dst, s);
                     self.emit_cond_jump(mem, COND_HS, target_pc);
                 }
                 ebpf::JLE_IMM32 | ebpf::JLE_REG32 => {
@@ -992,7 +990,7 @@ impl Aarch64Compiler {
                     } else {
                         src
                     };
-                    self.emit_cmpw(mem, s, dst);
+                    self.emit_cmpw(mem, dst, s);
                     self.emit_cond_jump(mem, COND_HI, target_pc);
                 }
                 ebpf::JSET_IMM32 | ebpf::JSET_REG32 => {
@@ -1022,7 +1020,7 @@ impl Aarch64Compiler {
                     } else {
                         src
                     };
-                    self.emit_cmpw(mem, s, dst);
+                    self.emit_cmpw(mem, dst, s);
                     self.emit_cond_jump(mem, COND_LE, target_pc);
                 }
                 ebpf::JSGE_IMM32 | ebpf::JSGE_REG32 => {
@@ -1052,7 +1050,7 @@ impl Aarch64Compiler {
                     } else {
                         src
                     };
-                    self.emit_cmpw(mem, s, dst);
+                    self.emit_cmpw(mem, dst, s);
                     self.emit_cond_jump(mem, COND_GT, target_pc);
                 }
 
@@ -1127,7 +1125,6 @@ impl Aarch64Compiler {
         self.emit_ldp_post(mem, A64_X29, A64_X30, A64_SP, 16);
         self.emit_ret(mem);
 
-        self.resolve_jumps(mem)?;
         Ok(())
     }
 } // impl Aarch64Compiler
