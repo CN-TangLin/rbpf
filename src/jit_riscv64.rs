@@ -395,11 +395,14 @@ impl RiscV64Compiler {
         let upper_hi20 = (upper.wrapping_sub(upper_lo12_u).wrapping_add(0x800)) >> 12;
         self.emit_lui(mem, rd, upper_hi20 & 0xFFFFF);
         self.emit_addiw(mem, rd, rd, upper_lo12);
-        self.emit_slli(mem, rd, rd, 12);
+        self.emit_slli(mem, rd, rd, 32);
         self.emit_lui(mem, RV_T1, lower_hi20 & 0xFFFFF);
         if lower_lo12_u != 0 {
             self.emit_addiw(mem, RV_T1, RV_T1, lower_lo12);
         }
+        // Zero-extend the lower 32-bit half (ADDIW sign-extends to 64 bits)
+        self.emit_slli(mem, RV_T1, RV_T1, 32);
+        self.emit_srli(mem, RV_T1, RV_T1, 32);
         self.emit_add(mem, rd, rd, RV_T1);
     }
 
@@ -420,11 +423,8 @@ impl RiscV64Compiler {
             offset_loc: mem.offset,
             target_pc,
         });
-        self.emit4(mem, 0x00000013); // NOP placeholder
-        self.emit4(mem, 0x00000013);
-        self.emit4(mem, 0x00000013);
-        self.emit4(mem, 0x00000013);
-        self.emit4(mem, 0x00000013);
+        self.emit4(mem, 0x00000013); // NOP for AUIPC
+        self.emit4(mem, 0x00000013); // NOP for JALR
     }
 
     // Emit conditional jump with inverted condition
@@ -446,17 +446,12 @@ impl RiscV64Compiler {
             7 => 6, // BGEU -> BLTU
             _ => funct3,
         };
-        self.emit_b(mem, 32, rs2, rs1, inv_funct3);
+        self.emit_b(mem, 12, rs2, rs1, inv_funct3);
         self.jumps.push(Jump {
             offset_loc: mem.offset,
             target_pc,
         });
         self.emit4(mem, 0x00000013); // NOP for AUIPC
-        self.emit4(mem, 0x00000013); // NOP for load_imm64
-        self.emit4(mem, 0x00000013);
-        self.emit4(mem, 0x00000013);
-        self.emit4(mem, 0x00000013);
-        self.emit4(mem, 0x00000013); // NOP for ADD
         self.emit4(mem, 0x00000013); // NOP for JALR
     }
 

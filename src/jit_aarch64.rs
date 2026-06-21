@@ -669,7 +669,7 @@ impl Aarch64Compiler {
                         src
                     };
                     self.emit_cmp(mem, s, A64_XZR);
-                    self.emit_bcond(mem, COND_EQ, 2 * 4);
+                    self.emit_bcond(mem, COND_EQ, 3 * 4);
                     self.emit_udivw(mem, dst, dst, s);
                     self.emit_b(mem, 2 * 4);
                     self.emit_movw(mem, dst, A64_XZR);
@@ -771,7 +771,7 @@ impl Aarch64Compiler {
                         src
                     };
                     self.emit_cmp(mem, s, A64_XZR);
-                    self.emit_bcond(mem, COND_EQ, 2 * 4);
+                    self.emit_bcond(mem, COND_EQ, 3 * 4);
                     self.emit_udiv(mem, dst, dst, s);
                     self.emit_b(mem, 2 * 4);
                     self.emit_mov(mem, dst, A64_XZR);
