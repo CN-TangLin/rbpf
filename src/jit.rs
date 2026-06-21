@@ -80,6 +80,11 @@ impl<'a> JitMemory<'a> {
             let mut jit = jit_riscv64::RiscV64Compiler::new();
             jit.jit_compile(&mut counter, prog, use_mbuff, update_data_ptr, helpers)?;
         }
+        #[cfg(target_arch = "aarch64")]
+        {
+            let mut jit = jit_aarch64::Aarch64Compiler::new();
+            jit.jit_compile(&mut counter, prog, use_mbuff, update_data_ptr, helpers)?;
+        }
         let size = round_up_to_page(counter.offset.max(PAGE_SIZE));
 
         let contents = unsafe {
@@ -147,6 +152,11 @@ impl<'a> JitMemory<'a> {
         #[cfg(target_arch = "riscv64")]
         {
             let mut jit = jit_riscv64::RiscV64Compiler::new();
+            jit.jit_compile(&mut counter, prog, use_mbuff, update_data_ptr, helpers)?;
+        }
+        #[cfg(target_arch = "aarch64")]
+        {
+            let mut jit = jit_aarch64::Aarch64Compiler::new();
             jit.jit_compile(&mut counter, prog, use_mbuff, update_data_ptr, helpers)?;
         }
         let size = round_up_to_page(counter.offset.max(PAGE_SIZE));

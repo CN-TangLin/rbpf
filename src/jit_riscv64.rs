@@ -5,10 +5,6 @@
 #[cfg(not(feature = "std"))]
 use crate::ErrorKind;
 use crate::{Error, HashMap, Vec, ebpf, format, vec};
-use core::mem;
-
-const PAGE_SIZE: usize = 4096;
-const NUM_PAGES: usize = 5;
 
 const TARGET_OFFSET: isize = ebpf::PROG_MAX_INSNS as isize;
 const TARGET_PC_EXIT: isize = TARGET_OFFSET + 1;
@@ -73,10 +69,12 @@ impl RiscV64Compiler {
 
     fn emit4(&self, mem: &mut JitMemory, data: u32) {
         let bytes = data.to_le_bytes();
-        mem.contents[mem.offset] = bytes[0];
-        mem.contents[mem.offset + 1] = bytes[1];
-        mem.contents[mem.offset + 2] = bytes[2];
-        mem.contents[mem.offset + 3] = bytes[3];
+        if mem.write_enabled {
+            mem.contents[mem.offset] = bytes[0];
+            mem.contents[mem.offset + 1] = bytes[1];
+            mem.contents[mem.offset + 2] = bytes[2];
+            mem.contents[mem.offset + 3] = bytes[3];
+        }
         mem.offset += 4;
     }
 
@@ -409,13 +407,9 @@ impl RiscV64Compiler {
         self.emit_add(mem, rd, rd, RV_T1);
     }
 
-    // Load effective address for ST/STX/LDX with BPF stack pointer adjustment
+    // Load effective address for ST/STX/LDX
     fn emit_effective_addr(&self, mem: &mut JitMemory, base: u32, off: i32, dst: u32) {
-        let effective_off = if base == RV_S5 {
-            off - CALLEE_SAVED_SIZE as i32
-        } else {
-            off
-        };
+        let effective_off = off;
         if effective_off >= -2048 && effective_off < 2048 {
             self.emit_addi(mem, dst, base, effective_off);
         } else {
@@ -477,6 +471,9 @@ impl RiscV64Compiler {
     }
 
     fn resolve_jumps(&mut self, mem: &mut JitMemory) -> Result<(), Error> {
+        if !mem.write_enabled {
+            return Ok(());
+        }
         for jump in &self.jumps {
             let target_loc = match self.special_targets.get(&jump.target_pc) {
                 Some(&target) => target,
@@ -639,8 +636,8 @@ impl RiscV64Compiler {
             }
         }
 
-        // BPF r10 = stack pointer (after callee-saved area)
-        self.emit_addi(mem, map_register(10), RV_SP, CALLEE_SAVED_SIZE as i32);
+        // BPF r10 = stack pointer (top of frame, matching x86_64 convention)
+        self.emit_addi(mem, map_register(10), RV_SP, FRAME_SIZE as i32);
 
         // Set up exit anchor
         self.set_anchor(mem, TARGET_PC_EXIT);
@@ -1135,8 +1132,7 @@ impl RiscV64Compiler {
                 ebpf::JEQ_IMM32 => {
                     self.emit_load_imm(mem, RV_T1, insn.imm as i64);
                     self.emit_zext32(mem, RV_T1);
-                    self.emit_andi(mem, RV_T2, dst, 0);
-                    self.emit_addi(mem, RV_T2, RV_T2, 0);
+                    self.emit_addi(mem, RV_T2, dst, 0);
                     self.emit_zext32(mem, RV_T2);
                     self.emit_cond_jump(mem, 0, RV_T2, RV_T1, target_pc);
                 }
@@ -1246,34 +1242,4 @@ impl RiscV64Compiler {
         self.resolve_jumps(mem)?;
         Ok(())
     }
-}
-
-pub fn create_jit_memory<'a>(
-    prog: &[u8],
-    helpers: &HashMap<u32, ebpf::Helper>,
-    use_mbuff: bool,
-    update_data_ptr: bool,
-) -> Result<JitMemory<'a>, Error> {
-    let size = NUM_PAGES * PAGE_SIZE;
-    let contents = unsafe {
-        let layout = std::alloc::Layout::from_size_align_unchecked(size, PAGE_SIZE);
-        let ptr = std::alloc::alloc(layout);
-        if ptr.is_null() {
-            return Err(Error::from(std::io::ErrorKind::OutOfMemory));
-        }
-        libc::mprotect(ptr.cast(), size, libc::PROT_EXEC | libc::PROT_WRITE);
-        std::slice::from_raw_parts_mut(ptr, size)
-    };
-
-    let mut mem = JitMemory {
-        contents,
-        write_enabled: true,
-        #[cfg(feature = "std")]
-        layout: std::alloc::Layout::from_size_align_unchecked(size, PAGE_SIZE),
-        offset: 0,
-    };
-
-    let mut compiler = RiscV64Compiler::new();
-    compiler.jit_compile(&mut mem, prog, use_mbuff, update_data_ptr, helpers)?;
-    Ok(mem)
 }

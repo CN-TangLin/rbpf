@@ -49,8 +49,7 @@ const FRAME_SIZE: usize = BPF_STACK_SIZE + CALLEE_SAVED_SIZE;
 
 const REGISTER_MAP_SIZE: usize = 11;
 const REGISTER_MAP: [u32; REGISTER_MAP_SIZE] = [
-    A64_X0, A64_X1, A64_X2, A64_X3, A64_X4, A64_X5,
-    A64_X19, A64_X20, A64_X21, A64_X22, A64_X25,
+    A64_X0, A64_X1, A64_X2, A64_X3, A64_X4, A64_X5, A64_X19, A64_X20, A64_X21, A64_X22, A64_X25,
 ];
 
 fn map_register(r: u8) -> u32 {
@@ -97,19 +96,23 @@ impl Aarch64Compiler {
 
     fn write_u32(&self, mem: &mut JitMemory, data: u32) {
         let bytes = data.to_le_bytes();
-        mem.contents[mem.offset] = bytes[0];
-        mem.contents[mem.offset + 1] = bytes[1];
-        mem.contents[mem.offset + 2] = bytes[2];
-        mem.contents[mem.offset + 3] = bytes[3];
+        if mem.write_enabled {
+            mem.contents[mem.offset] = bytes[0];
+            mem.contents[mem.offset + 1] = bytes[1];
+            mem.contents[mem.offset + 2] = bytes[2];
+            mem.contents[mem.offset + 3] = bytes[3];
+        }
         mem.offset += 4;
     }
 
     fn write_u32_at(&self, mem: &mut JitMemory, offset: usize, value: u32) {
-        let bytes = value.to_le_bytes();
-        mem.contents[offset] = bytes[0];
-        mem.contents[offset + 1] = bytes[1];
-        mem.contents[offset + 2] = bytes[2];
-        mem.contents[offset + 3] = bytes[3];
+        if mem.write_enabled {
+            let bytes = value.to_le_bytes();
+            mem.contents[offset] = bytes[0];
+            mem.contents[offset + 1] = bytes[1];
+            mem.contents[offset + 2] = bytes[2];
+            mem.contents[offset + 3] = bytes[3];
+        }
     }
 
     fn set_anchor(&mut self, mem: &mut JitMemory, target_pc: isize) {
@@ -170,13 +173,25 @@ impl Aarch64Compiler {
     }
 
     fn emit_ubfm(&self, mem: &mut JitMemory, sf: u32, rd: u32, rn: u32, immr: u32, imms: u32) {
-        let enc = (sf << 31) | (0b10 << 29) | (0b100110 << 23) | (sf << 22)
-            | (immr << 16) | (imms << 10) | (rn << 5) | rd;
+        let enc = (sf << 31)
+            | (0b10 << 29)
+            | (0b100110 << 23)
+            | (sf << 22)
+            | (immr << 16)
+            | (imms << 10)
+            | (rn << 5)
+            | rd;
         self.write_u32(mem, enc);
     }
     fn emit_sbfm(&self, mem: &mut JitMemory, sf: u32, rd: u32, rn: u32, immr: u32, imms: u32) {
-        let enc = (sf << 31) | (0b00 << 29) | (0b100110 << 23) | (sf << 22)
-            | (immr << 16) | (imms << 10) | (rn << 5) | rd;
+        let enc = (sf << 31)
+            | (0b00 << 29)
+            | (0b100110 << 23)
+            | (sf << 22)
+            | (immr << 16)
+            | (imms << 10)
+            | (rn << 5)
+            | rd;
         self.write_u32(mem, enc);
     }
     fn emit_lsl(&self, mem: &mut JitMemory, rd: u32, rn: u32, sh: u32) {
@@ -238,40 +253,75 @@ impl Aarch64Compiler {
         self.write_u32(mem, enc);
     }
     fn emit_movk(&self, mem: &mut JitMemory, rd: u32, imm16: u32, hw: u32) {
-        let enc = (1 << 31) | (0b11 << 29) | (0b100101 << 23) | ((hw & 3) << 21) | ((imm16 & 0xFFFF) << 5) | rd;
+        let enc = (1 << 31)
+            | (0b11 << 29)
+            | (0b100101 << 23)
+            | ((hw & 3) << 21)
+            | ((imm16 & 0xFFFF) << 5)
+            | rd;
         self.write_u32(mem, enc);
     }
     fn emit_ldr(&self, mem: &mut JitMemory, rt: u32, rn: u32, off: i32) {
-        self.write_u32(mem, 0xF940_0000 | ((off as u32 & 0xFFF) << 10) | (rn << 5) | rt);
+        self.write_u32(
+            mem,
+            0xF940_0000 | ((off as u32 & 0xFFF) << 10) | (rn << 5) | rt,
+        );
     }
     fn emit_ldrw(&self, mem: &mut JitMemory, rt: u32, rn: u32, off: i32) {
-        self.write_u32(mem, 0xB940_0000 | ((off as u32 & 0xFFF) << 10) | (rn << 5) | rt);
+        self.write_u32(
+            mem,
+            0xB940_0000 | ((off as u32 & 0xFFF) << 10) | (rn << 5) | rt,
+        );
     }
     fn emit_ldrh(&self, mem: &mut JitMemory, rt: u32, rn: u32, off: i32) {
-        self.write_u32(mem, 0x7940_0000 | ((off as u32 & 0xFFF) << 10) | (rn << 5) | rt);
+        self.write_u32(
+            mem,
+            0x7940_0000 | ((off as u32 & 0xFFF) << 10) | (rn << 5) | rt,
+        );
     }
     fn emit_ldrb(&self, mem: &mut JitMemory, rt: u32, rn: u32, off: i32) {
-        self.write_u32(mem, 0x3940_0000 | ((off as u32 & 0xFFF) << 10) | (rn << 5) | rt);
+        self.write_u32(
+            mem,
+            0x3940_0000 | ((off as u32 & 0xFFF) << 10) | (rn << 5) | rt,
+        );
     }
     fn emit_str(&self, mem: &mut JitMemory, rt: u32, rn: u32, off: i32) {
-        self.write_u32(mem, 0xF900_0000 | ((off as u32 & 0xFFF) << 10) | (rn << 5) | rt);
+        self.write_u32(
+            mem,
+            0xF900_0000 | ((off as u32 & 0xFFF) << 10) | (rn << 5) | rt,
+        );
     }
     fn emit_strw(&self, mem: &mut JitMemory, rt: u32, rn: u32, off: i32) {
-        self.write_u32(mem, 0xB900_0000 | ((off as u32 & 0xFFF) << 10) | (rn << 5) | rt);
+        self.write_u32(
+            mem,
+            0xB900_0000 | ((off as u32 & 0xFFF) << 10) | (rn << 5) | rt,
+        );
     }
     fn emit_strh(&self, mem: &mut JitMemory, rt: u32, rn: u32, off: i32) {
-        self.write_u32(mem, 0x7900_0000 | ((off as u32 & 0xFFF) << 10) | (rn << 5) | rt);
+        self.write_u32(
+            mem,
+            0x7900_0000 | ((off as u32 & 0xFFF) << 10) | (rn << 5) | rt,
+        );
     }
     fn emit_strb(&self, mem: &mut JitMemory, rt: u32, rn: u32, off: i32) {
-        self.write_u32(mem, 0x3900_0000 | ((off as u32 & 0xFFF) << 10) | (rn << 5) | rt);
+        self.write_u32(
+            mem,
+            0x3900_0000 | ((off as u32 & 0xFFF) << 10) | (rn << 5) | rt,
+        );
     }
     fn emit_stp_pre(&self, mem: &mut JitMemory, rt1: u32, rt2: u32, rn: u32, imm: i32) {
         let imm7 = ((imm / 8) & 0x7F) as u32;
-        self.write_u32(mem, 0xA980_0000 | (imm7 << 15) | (rt2 << 10) | (rn << 5) | rt1);
+        self.write_u32(
+            mem,
+            0xA980_0000 | (imm7 << 15) | (rt2 << 10) | (rn << 5) | rt1,
+        );
     }
     fn emit_ldp_post(&self, mem: &mut JitMemory, rt1: u32, rt2: u32, rn: u32, imm: i32) {
         let imm7 = ((imm / 8) & 0x7F) as u32;
-        self.write_u32(mem, 0xA8C0_0000 | (imm7 << 15) | (rt2 << 10) | (rn << 5) | rt1);
+        self.write_u32(
+            mem,
+            0xA8C0_0000 | (imm7 << 15) | (rt2 << 10) | (rn << 5) | rt1,
+        );
     }
     fn emit_b(&self, mem: &mut JitMemory, imm: i32) {
         let imm26 = ((imm as u32) & 0x03FF_FFFF) >> 2;
@@ -362,17 +412,29 @@ impl Aarch64Compiler {
 
     /// Emit unconditional jump (7 NOPs = 28 bytes), patched in resolve_jumps
     fn emit_jump(&mut self, mem: &mut JitMemory, target_pc: isize) {
-        self.jumps.push(Jump { offset_loc: mem.offset, target_pc });
-        for _ in 0..7 { self.emit_nop(mem); }
+        self.jumps.push(Jump {
+            offset_loc: mem.offset,
+            target_pc,
+        });
+        for _ in 0..7 {
+            self.emit_nop(mem);
+        }
     }
 
     /// Emit conditional jump with inverted condition
     /// Pattern: 7 NOPs | B.cond INVERTED #28 | 7 NOPs (take block)
     fn emit_cond_jump(&mut self, mem: &mut JitMemory, cond: u32, target_pc: isize) {
-        for _ in 0..7 { self.emit_nop(mem); }
+        for _ in 0..7 {
+            self.emit_nop(mem);
+        }
         self.emit_bcond(mem, cond, 28);
-        self.jumps.push(Jump { offset_loc: mem.offset, target_pc });
-        for _ in 0..7 { self.emit_nop(mem); }
+        self.jumps.push(Jump {
+            offset_loc: mem.offset,
+            target_pc,
+        });
+        for _ in 0..7 {
+            self.emit_nop(mem);
+        }
     }
 
     /// Patch 7-instruction jump at given offset:
@@ -380,20 +442,54 @@ impl Aarch64Compiler {
     ///   | ADR x17,0 | ADD x17,x17,x16 | BR x17
     fn patch_jump_at(&self, mem: &mut JitMemory, pc: usize, target_loc: usize) {
         let offset = target_loc as i64 - pc as i64 - 16;
-        self.write_u32_at(mem, pc,
-            (1u32<<31)|(0b100101<<23)|(0<<21)|(((offset as u64 & 0xFFFF) as u32)<<5)|A64_X16);
-        self.write_u32_at(mem, pc+4,
-            (1u32<<31)|(0b11<<29)|(0b100101<<23)|(1<<21)|((((offset as u64>>16) & 0xFFFF) as u32)<<5)|A64_X16);
-        self.write_u32_at(mem, pc+8,
-            (1u32<<31)|(0b11<<29)|(0b100101<<23)|(2<<21)|((((offset as u64>>32) & 0xFFFF) as u32)<<5)|A64_X16);
-        self.write_u32_at(mem, pc+12,
-            (1u32<<31)|(0b11<<29)|(0b100101<<23)|(3<<21)|((((offset as u64>>48) & 0xFFFF) as u32)<<5)|A64_X16);
-        self.write_u32_at(mem, pc+16, 0x1000_0011); // ADR x17,0
-        self.write_u32_at(mem, pc+20, 0x8B10_0231); // ADD x17,x17,x16
-        self.write_u32_at(mem, pc+24, 0xD61F_0220); // BR x17
+        self.write_u32_at(
+            mem,
+            pc,
+            (1u32 << 31)
+                | (0b100101 << 23)
+                | (0 << 21)
+                | (((offset as u64 & 0xFFFF) as u32) << 5)
+                | A64_X16,
+        );
+        self.write_u32_at(
+            mem,
+            pc + 4,
+            (1u32 << 31)
+                | (0b11 << 29)
+                | (0b100101 << 23)
+                | (1 << 21)
+                | ((((offset as u64 >> 16) & 0xFFFF) as u32) << 5)
+                | A64_X16,
+        );
+        self.write_u32_at(
+            mem,
+            pc + 8,
+            (1u32 << 31)
+                | (0b11 << 29)
+                | (0b100101 << 23)
+                | (2 << 21)
+                | ((((offset as u64 >> 32) & 0xFFFF) as u32) << 5)
+                | A64_X16,
+        );
+        self.write_u32_at(
+            mem,
+            pc + 12,
+            (1u32 << 31)
+                | (0b11 << 29)
+                | (0b100101 << 23)
+                | (3 << 21)
+                | ((((offset as u64 >> 48) & 0xFFFF) as u32) << 5)
+                | A64_X16,
+        );
+        self.write_u32_at(mem, pc + 16, 0x1000_0011); // ADR x17,0
+        self.write_u32_at(mem, pc + 20, 0x8B10_0231); // ADD x17,x17,x16
+        self.write_u32_at(mem, pc + 24, 0xD61F_0220); // BR x17
     }
 
     fn resolve_jumps(&mut self, mem: &mut JitMemory) -> Result<(), Error> {
+        if !mem.write_enabled {
+            return Ok(());
+        }
         for jump in &self.jumps {
             let target_loc = match self.special_targets.get(&jump.target_pc) {
                 Some(&t) => t,
@@ -431,17 +527,22 @@ impl Aarch64Compiler {
         match (use_mbuff, update_data_ptr) {
             (true, true) => {
                 self.emit_add(mem, A64_X6, A64_X0, A64_X4); // x6 = mbuff + mem_offset
-                self.emit_str(mem, A64_X2, A64_X6, 0);      // store mem
+                self.emit_str(mem, A64_X2, A64_X6, 0); // store mem
                 self.emit_add(mem, A64_X7, A64_X0, A64_X5); // x7 = mbuff + mem_end_offset
                 self.emit_add(mem, A64_X6, A64_X2, A64_X3); // x6 = mem + mem_len
-                self.emit_str(mem, A64_X6, A64_X7, 0);      // store mem_end
+                self.emit_str(mem, A64_X6, A64_X7, 0); // store mem_end
             }
             _ => {} // Raw/Mbuff: context is already in x0
         }
 
         // Allocate BPF stack, set up frame pointer
         self.emit_subi(mem, A64_SP, A64_SP, BPF_STACK_SIZE as u32);
-        self.emit_addi(mem, A64_X25, A64_SP, (BPF_STACK_SIZE + CALLEE_SAVED_SIZE) as u32);
+        self.emit_addi(
+            mem,
+            A64_X25,
+            A64_SP,
+            (BPF_STACK_SIZE + CALLEE_SAVED_SIZE) as u32,
+        );
 
         // BPF r0 = 0, BPF r1 = context (from x0)
         self.emit_mov(mem, A64_X1, A64_X0);
@@ -471,38 +572,98 @@ impl Aarch64Compiler {
                 }
 
                 // LDX
-                ebpf::LD_B_REG => { self.emit_add_offset(mem, A64_X7, src, insn.off as i32); self.emit_ldrb(mem, dst, A64_X7, 0); }
-                ebpf::LD_H_REG => { self.emit_add_offset(mem, A64_X7, src, insn.off as i32); self.emit_ldrh(mem, dst, A64_X7, 0); }
-                ebpf::LD_W_REG => { self.emit_add_offset(mem, A64_X7, src, insn.off as i32); self.emit_ldrw(mem, dst, A64_X7, 0); }
-                ebpf::LD_DW_REG => { self.emit_add_offset(mem, A64_X7, src, insn.off as i32); self.emit_ldr(mem, dst, A64_X7, 0); }
+                ebpf::LD_B_REG => {
+                    self.emit_add_offset(mem, A64_X7, src, insn.off as i32);
+                    self.emit_ldrb(mem, dst, A64_X7, 0);
+                }
+                ebpf::LD_H_REG => {
+                    self.emit_add_offset(mem, A64_X7, src, insn.off as i32);
+                    self.emit_ldrh(mem, dst, A64_X7, 0);
+                }
+                ebpf::LD_W_REG => {
+                    self.emit_add_offset(mem, A64_X7, src, insn.off as i32);
+                    self.emit_ldrw(mem, dst, A64_X7, 0);
+                }
+                ebpf::LD_DW_REG => {
+                    self.emit_add_offset(mem, A64_X7, src, insn.off as i32);
+                    self.emit_ldr(mem, dst, A64_X7, 0);
+                }
 
                 // ST
-                ebpf::ST_B_IMM => { self.emit_add_offset(mem, A64_X7, dst, insn.off as i32); self.emit_load_imm32(mem, A64_X6, insn.imm); self.emit_strb(mem, A64_X6, A64_X7, 0); }
-                ebpf::ST_H_IMM => { self.emit_add_offset(mem, A64_X7, dst, insn.off as i32); self.emit_load_imm32(mem, A64_X6, insn.imm); self.emit_strh(mem, A64_X6, A64_X7, 0); }
-                ebpf::ST_W_IMM => { self.emit_add_offset(mem, A64_X7, dst, insn.off as i32); self.emit_load_imm32(mem, A64_X6, insn.imm); self.emit_strw(mem, A64_X6, A64_X7, 0); }
-                ebpf::ST_DW_IMM => { self.emit_add_offset(mem, A64_X7, dst, insn.off as i32); self.emit_load_imm64(mem, A64_X6, insn.imm as u64); self.emit_str(mem, A64_X6, A64_X7, 0); }
+                ebpf::ST_B_IMM => {
+                    self.emit_add_offset(mem, A64_X7, dst, insn.off as i32);
+                    self.emit_load_imm32(mem, A64_X6, insn.imm);
+                    self.emit_strb(mem, A64_X6, A64_X7, 0);
+                }
+                ebpf::ST_H_IMM => {
+                    self.emit_add_offset(mem, A64_X7, dst, insn.off as i32);
+                    self.emit_load_imm32(mem, A64_X6, insn.imm);
+                    self.emit_strh(mem, A64_X6, A64_X7, 0);
+                }
+                ebpf::ST_W_IMM => {
+                    self.emit_add_offset(mem, A64_X7, dst, insn.off as i32);
+                    self.emit_load_imm32(mem, A64_X6, insn.imm);
+                    self.emit_strw(mem, A64_X6, A64_X7, 0);
+                }
+                ebpf::ST_DW_IMM => {
+                    self.emit_add_offset(mem, A64_X7, dst, insn.off as i32);
+                    self.emit_load_imm64(mem, A64_X6, insn.imm as u64);
+                    self.emit_str(mem, A64_X6, A64_X7, 0);
+                }
 
                 // STX
-                ebpf::ST_B_REG => { self.emit_add_offset(mem, A64_X7, dst, insn.off as i32); self.emit_strb(mem, src, A64_X7, 0); }
-                ebpf::ST_H_REG => { self.emit_add_offset(mem, A64_X7, dst, insn.off as i32); self.emit_strh(mem, src, A64_X7, 0); }
-                ebpf::ST_W_REG => { self.emit_add_offset(mem, A64_X7, dst, insn.off as i32); self.emit_strw(mem, src, A64_X7, 0); }
-                ebpf::ST_DW_REG => { self.emit_add_offset(mem, A64_X7, dst, insn.off as i32); self.emit_str(mem, src, A64_X7, 0); }
+                ebpf::ST_B_REG => {
+                    self.emit_add_offset(mem, A64_X7, dst, insn.off as i32);
+                    self.emit_strb(mem, src, A64_X7, 0);
+                }
+                ebpf::ST_H_REG => {
+                    self.emit_add_offset(mem, A64_X7, dst, insn.off as i32);
+                    self.emit_strh(mem, src, A64_X7, 0);
+                }
+                ebpf::ST_W_REG => {
+                    self.emit_add_offset(mem, A64_X7, dst, insn.off as i32);
+                    self.emit_strw(mem, src, A64_X7, 0);
+                }
+                ebpf::ST_DW_REG => {
+                    self.emit_add_offset(mem, A64_X7, dst, insn.off as i32);
+                    self.emit_str(mem, src, A64_X7, 0);
+                }
 
                 // ALU32
                 ebpf::ADD32_IMM | ebpf::ADD32_REG => {
-                    let s = if use_imm { self.emit_load_imm32(mem, A64_X6, insn.imm); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm32(mem, A64_X6, insn.imm);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_addw(mem, dst, dst, s);
                 }
                 ebpf::SUB32_IMM | ebpf::SUB32_REG => {
-                    let s = if use_imm { self.emit_load_imm32(mem, A64_X6, insn.imm); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm32(mem, A64_X6, insn.imm);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_subw(mem, dst, dst, s);
                 }
                 ebpf::MUL32_IMM | ebpf::MUL32_REG => {
-                    let s = if use_imm { self.emit_load_imm32(mem, A64_X6, insn.imm); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm32(mem, A64_X6, insn.imm);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_maddw(mem, dst, dst, s, A64_XZR);
                 }
                 ebpf::DIV32_IMM | ebpf::DIV32_REG => {
-                    let s = if use_imm { self.emit_load_imm32(mem, A64_X6, insn.imm); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm32(mem, A64_X6, insn.imm);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_cmp(mem, s, A64_XZR);
                     self.emit_bcond(mem, COND_EQ, 2 * 4);
                     self.emit_udivw(mem, dst, dst, s);
@@ -511,20 +672,37 @@ impl Aarch64Compiler {
                     self.emit_nop(mem);
                 }
                 ebpf::MOD32_IMM | ebpf::MOD32_REG => {
-                    let s = if use_imm { self.emit_load_imm32(mem, A64_X6, insn.imm); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm32(mem, A64_X6, insn.imm);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_cmp(mem, s, A64_XZR);
                     self.emit_bcond(mem, COND_EQ, 6 * 4);
                     self.emit_udivw(mem, A64_X7, dst, s);
                     self.emit_maddw(mem, A64_X7, A64_X7, s, A64_XZR);
                     self.emit_subw(mem, dst, dst, A64_X7);
-                    self.emit_nop(mem); self.emit_nop(mem); self.emit_nop(mem);
+                    self.emit_nop(mem);
+                    self.emit_nop(mem);
+                    self.emit_nop(mem);
                 }
                 ebpf::OR32_IMM | ebpf::OR32_REG => {
-                    let s = if use_imm { self.emit_load_imm32(mem, A64_X6, insn.imm); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm32(mem, A64_X6, insn.imm);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_orrw(mem, dst, dst, s);
                 }
                 ebpf::AND32_IMM | ebpf::AND32_REG => {
-                    let s = if use_imm { self.emit_load_imm32(mem, A64_X6, insn.imm); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm32(mem, A64_X6, insn.imm);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_andw(mem, dst, dst, s);
                 }
                 ebpf::LSH32_IMM => self.emit_lslw(mem, dst, dst, (insn.imm as u32) & 0x1F),
@@ -533,7 +711,12 @@ impl Aarch64Compiler {
                 ebpf::RSH32_REG => self.emit_lsrvw(mem, dst, dst, src),
                 ebpf::NEG32 => self.emit_subw(mem, dst, A64_XZR, dst),
                 ebpf::XOR32_IMM | ebpf::XOR32_REG => {
-                    let s = if use_imm { self.emit_load_imm32(mem, A64_X6, insn.imm); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm32(mem, A64_X6, insn.imm);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_eorw(mem, dst, dst, s);
                 }
                 ebpf::MOV32_IMM => self.emit_load_imm32(mem, dst, insn.imm),
@@ -550,19 +733,39 @@ impl Aarch64Compiler {
 
                 // ALU64
                 ebpf::ADD64_IMM | ebpf::ADD64_REG => {
-                    let s = if use_imm { self.emit_load_imm64(mem, A64_X6, insn.imm as u64); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm64(mem, A64_X6, insn.imm as u64);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_add(mem, dst, dst, s);
                 }
                 ebpf::SUB64_IMM | ebpf::SUB64_REG => {
-                    let s = if use_imm { self.emit_load_imm64(mem, A64_X6, insn.imm as u64); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm64(mem, A64_X6, insn.imm as u64);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_sub(mem, dst, dst, s);
                 }
                 ebpf::MUL64_IMM | ebpf::MUL64_REG => {
-                    let s = if use_imm { self.emit_load_imm64(mem, A64_X6, insn.imm as u64); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm64(mem, A64_X6, insn.imm as u64);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_madd(mem, dst, dst, s, A64_XZR);
                 }
                 ebpf::DIV64_IMM | ebpf::DIV64_REG => {
-                    let s = if use_imm { self.emit_load_imm64(mem, A64_X6, insn.imm as u64); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm64(mem, A64_X6, insn.imm as u64);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_cmp(mem, s, A64_XZR);
                     self.emit_bcond(mem, COND_EQ, 2 * 4);
                     self.emit_udiv(mem, dst, dst, s);
@@ -571,20 +774,37 @@ impl Aarch64Compiler {
                     self.emit_nop(mem);
                 }
                 ebpf::MOD64_IMM | ebpf::MOD64_REG => {
-                    let s = if use_imm { self.emit_load_imm64(mem, A64_X6, insn.imm as u64); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm64(mem, A64_X6, insn.imm as u64);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_cmp(mem, s, A64_XZR);
                     self.emit_bcond(mem, COND_EQ, 6 * 4);
                     self.emit_udiv(mem, A64_X7, dst, s);
                     self.emit_madd(mem, A64_X7, A64_X7, s, A64_XZR);
                     self.emit_sub(mem, dst, dst, A64_X7);
-                    self.emit_nop(mem); self.emit_nop(mem); self.emit_nop(mem);
+                    self.emit_nop(mem);
+                    self.emit_nop(mem);
+                    self.emit_nop(mem);
                 }
                 ebpf::OR64_IMM | ebpf::OR64_REG => {
-                    let s = if use_imm { self.emit_load_imm64(mem, A64_X6, insn.imm as u64); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm64(mem, A64_X6, insn.imm as u64);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_orr(mem, dst, dst, s);
                 }
                 ebpf::AND64_IMM | ebpf::AND64_REG => {
-                    let s = if use_imm { self.emit_load_imm64(mem, A64_X6, insn.imm as u64); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm64(mem, A64_X6, insn.imm as u64);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_and(mem, dst, dst, s);
                 }
                 ebpf::LSH64_IMM => self.emit_lsl(mem, dst, dst, (insn.imm as u32) & 0x3F),
@@ -593,7 +813,12 @@ impl Aarch64Compiler {
                 ebpf::RSH64_REG => self.emit_lsrv(mem, dst, dst, src),
                 ebpf::NEG64 => self.emit_sub(mem, dst, A64_XZR, dst),
                 ebpf::XOR64_IMM | ebpf::XOR64_REG => {
-                    let s = if use_imm { self.emit_load_imm64(mem, A64_X6, insn.imm as u64); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm64(mem, A64_X6, insn.imm as u64);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_eor(mem, dst, dst, s);
                 }
                 ebpf::MOV64_IMM => self.emit_load_imm64(mem, dst, insn.imm as u64),
@@ -603,118 +828,230 @@ impl Aarch64Compiler {
 
                 // JMP unconditional
                 ebpf::JA => self.emit_jump(mem, target_pc),
-                ebpf::EXIT => { self.emit_jump(mem, TARGET_PC_EXIT); }
+                ebpf::EXIT => {
+                    self.emit_jump(mem, TARGET_PC_EXIT);
+                }
 
                 // JMP conditional 64-bit
                 ebpf::JEQ_IMM | ebpf::JEQ_REG => {
-                    let s = if use_imm { self.emit_load_imm64(mem, A64_X6, insn.imm as u64); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm64(mem, A64_X6, insn.imm as u64);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_cmp(mem, dst, s);
                     self.emit_cond_jump(mem, COND_NE, target_pc);
                 }
                 ebpf::JGT_IMM | ebpf::JGT_REG => {
-                    let s = if use_imm { self.emit_load_imm64(mem, A64_X6, insn.imm as u64); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm64(mem, A64_X6, insn.imm as u64);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_cmp(mem, dst, s);
                     self.emit_cond_jump(mem, COND_LS, target_pc);
                 }
                 ebpf::JGE_IMM | ebpf::JGE_REG => {
-                    let s = if use_imm { self.emit_load_imm64(mem, A64_X6, insn.imm as u64); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm64(mem, A64_X6, insn.imm as u64);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_cmp(mem, dst, s);
                     self.emit_cond_jump(mem, COND_LO, target_pc);
                 }
                 ebpf::JLT_IMM | ebpf::JLT_REG => {
-                    let s = if use_imm { self.emit_load_imm64(mem, A64_X6, insn.imm as u64); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm64(mem, A64_X6, insn.imm as u64);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_cmp(mem, s, dst);
                     self.emit_cond_jump(mem, COND_HS, target_pc);
                 }
                 ebpf::JLE_IMM | ebpf::JLE_REG => {
-                    let s = if use_imm { self.emit_load_imm64(mem, A64_X6, insn.imm as u64); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm64(mem, A64_X6, insn.imm as u64);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_cmp(mem, s, dst);
                     self.emit_cond_jump(mem, COND_HI, target_pc);
                 }
                 ebpf::JSET_IMM | ebpf::JSET_REG => {
-                    let s = if use_imm { self.emit_load_imm64(mem, A64_X6, insn.imm as u64); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm64(mem, A64_X6, insn.imm as u64);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_tst(mem, dst, s);
                     self.emit_cond_jump(mem, COND_EQ, target_pc);
                 }
                 ebpf::JNE_IMM | ebpf::JNE_REG => {
-                    let s = if use_imm { self.emit_load_imm64(mem, A64_X6, insn.imm as u64); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm64(mem, A64_X6, insn.imm as u64);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_cmp(mem, dst, s);
                     self.emit_cond_jump(mem, COND_EQ, target_pc);
                 }
                 ebpf::JSGT_IMM | ebpf::JSGT_REG => {
-                    let s = if use_imm { self.emit_load_imm64(mem, A64_X6, insn.imm as u64); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm64(mem, A64_X6, insn.imm as u64);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_cmp(mem, s, dst);
                     self.emit_cond_jump(mem, COND_LE, target_pc);
                 }
                 ebpf::JSGE_IMM | ebpf::JSGE_REG => {
-                    let s = if use_imm { self.emit_load_imm64(mem, A64_X6, insn.imm as u64); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm64(mem, A64_X6, insn.imm as u64);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_cmp(mem, dst, s);
                     self.emit_cond_jump(mem, COND_LT, target_pc);
                 }
                 ebpf::JSLT_IMM | ebpf::JSLT_REG => {
-                    let s = if use_imm { self.emit_load_imm64(mem, A64_X6, insn.imm as u64); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm64(mem, A64_X6, insn.imm as u64);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_cmp(mem, dst, s);
                     self.emit_cond_jump(mem, COND_GE, target_pc);
                 }
                 ebpf::JSLE_IMM | ebpf::JSLE_REG => {
-                    let s = if use_imm { self.emit_load_imm64(mem, A64_X6, insn.imm as u64); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm64(mem, A64_X6, insn.imm as u64);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_cmp(mem, s, dst);
                     self.emit_cond_jump(mem, COND_GT, target_pc);
                 }
 
                 // JMP32 conditional
                 ebpf::JEQ_IMM32 | ebpf::JEQ_REG32 => {
-                    let s = if use_imm { self.emit_load_imm32(mem, A64_X6, insn.imm); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm32(mem, A64_X6, insn.imm);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_cmpw(mem, dst, s);
                     self.emit_cond_jump(mem, COND_NE, target_pc);
                 }
                 ebpf::JGT_IMM32 | ebpf::JGT_REG32 => {
-                    let s = if use_imm { self.emit_load_imm32(mem, A64_X6, insn.imm); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm32(mem, A64_X6, insn.imm);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_cmpw(mem, dst, s);
                     self.emit_cond_jump(mem, COND_LS, target_pc);
                 }
                 ebpf::JGE_IMM32 | ebpf::JGE_REG32 => {
-                    let s = if use_imm { self.emit_load_imm32(mem, A64_X6, insn.imm); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm32(mem, A64_X6, insn.imm);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_cmpw(mem, dst, s);
                     self.emit_cond_jump(mem, COND_LO, target_pc);
                 }
                 ebpf::JLT_IMM32 | ebpf::JLT_REG32 => {
-                    let s = if use_imm { self.emit_load_imm32(mem, A64_X6, insn.imm); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm32(mem, A64_X6, insn.imm);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_cmpw(mem, s, dst);
                     self.emit_cond_jump(mem, COND_HS, target_pc);
                 }
                 ebpf::JLE_IMM32 | ebpf::JLE_REG32 => {
-                    let s = if use_imm { self.emit_load_imm32(mem, A64_X6, insn.imm); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm32(mem, A64_X6, insn.imm);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_cmpw(mem, s, dst);
                     self.emit_cond_jump(mem, COND_HI, target_pc);
                 }
                 ebpf::JSET_IMM32 | ebpf::JSET_REG32 => {
-                    let s = if use_imm { self.emit_load_imm32(mem, A64_X6, insn.imm); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm32(mem, A64_X6, insn.imm);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_tstw(mem, dst, s);
                     self.emit_cond_jump(mem, COND_EQ, target_pc);
                 }
                 ebpf::JNE_IMM32 | ebpf::JNE_REG32 => {
-                    let s = if use_imm { self.emit_load_imm32(mem, A64_X6, insn.imm); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm32(mem, A64_X6, insn.imm);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_cmpw(mem, dst, s);
                     self.emit_cond_jump(mem, COND_EQ, target_pc);
                 }
                 ebpf::JSGT_IMM32 | ebpf::JSGT_REG32 => {
-                    let s = if use_imm { self.emit_load_imm32(mem, A64_X6, insn.imm); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm32(mem, A64_X6, insn.imm);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_cmpw(mem, s, dst);
                     self.emit_cond_jump(mem, COND_LE, target_pc);
                 }
                 ebpf::JSGE_IMM32 | ebpf::JSGE_REG32 => {
-                    let s = if use_imm { self.emit_load_imm32(mem, A64_X6, insn.imm); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm32(mem, A64_X6, insn.imm);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_cmpw(mem, dst, s);
                     self.emit_cond_jump(mem, COND_LT, target_pc);
                 }
                 ebpf::JSLT_IMM32 | ebpf::JSLT_REG32 => {
-                    let s = if use_imm { self.emit_load_imm32(mem, A64_X6, insn.imm); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm32(mem, A64_X6, insn.imm);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_cmpw(mem, dst, s);
                     self.emit_cond_jump(mem, COND_GE, target_pc);
                 }
                 ebpf::JSLE_IMM32 | ebpf::JSLE_REG32 => {
-                    let s = if use_imm { self.emit_load_imm32(mem, A64_X6, insn.imm); A64_X6 } else { src };
+                    let s = if use_imm {
+                        self.emit_load_imm32(mem, A64_X6, insn.imm);
+                        A64_X6
+                    } else {
+                        src
+                    };
                     self.emit_cmpw(mem, s, dst);
                     self.emit_cond_jump(mem, COND_GT, target_pc);
                 }
@@ -756,8 +1093,14 @@ impl Aarch64Compiler {
 
                 ebpf::ST_W_XADD | ebpf::ST_DW_XADD => unimplemented!(),
 
-                ebpf::LD_ABS_B | ebpf::LD_ABS_H | ebpf::LD_ABS_W | ebpf::LD_ABS_DW
-                | ebpf::LD_IND_B | ebpf::LD_IND_H | ebpf::LD_IND_W | ebpf::LD_IND_DW => {
+                ebpf::LD_ABS_B
+                | ebpf::LD_ABS_H
+                | ebpf::LD_ABS_W
+                | ebpf::LD_ABS_DW
+                | ebpf::LD_IND_B
+                | ebpf::LD_IND_H
+                | ebpf::LD_IND_W
+                | ebpf::LD_IND_DW => {
                     return Err(Error::other(
                         "[JIT aarch64] Error: LD_ABS/LD_IND not supported",
                     ));
@@ -788,36 +1131,6 @@ impl Aarch64Compiler {
         Ok(())
     }
 } // impl Aarch64Compiler
-
-#[cfg(feature = "std")]
-pub fn create_jit_memory<'a>(
-    prog: &[u8],
-    helpers: &HashMap<u32, ebpf::Helper>,
-    use_mbuff: bool,
-    update_data_ptr: bool,
-) -> Result<JitMemory<'a>, Error> {
-    let size = NUM_PAGES * PAGE_SIZE;
-    let contents = unsafe {
-        let layout = std::alloc::Layout::from_size_align_unchecked(size, PAGE_SIZE);
-        let ptr = std::alloc::alloc(layout);
-        if ptr.is_null() {
-            return Err(Error::from(std::io::ErrorKind::OutOfMemory));
-        }
-        libc::mprotect(ptr.cast(), size, libc::PROT_EXEC | libc::PROT_WRITE);
-        std::slice::from_raw_parts_mut(ptr, size)
-    };
-
-    let mut mem = JitMemory {
-        contents,
-        write_enabled: true,
-        layout: std::alloc::Layout::from_size_align_unchecked(size, PAGE_SIZE),
-        offset: 0,
-    };
-
-    let mut compiler = Aarch64Compiler::new();
-    compiler.jit_compile(&mut mem, prog, use_mbuff, update_data_ptr, helpers)?;
-    Ok(mem)
-}
 
 #[cfg(test)]
 mod tests {
